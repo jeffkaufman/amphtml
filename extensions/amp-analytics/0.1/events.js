@@ -986,13 +986,25 @@ export class VisibilityTracker extends EventTracker {
     const visibilitySpec = config['visibilitySpec'] || {};
     const selector = config['selector'] || visibilitySpec['selector'];
     const waitForSpec = visibilitySpec['waitFor'];
+
+    // FIXME!
+    visibilitySpec['unmeasurableReasons'] = ['z'];
+    config['unmeasurableRequest'] = "https://example.example/pcs/activeview?xai=AKAOjsvgvVAo9vkttznJErITe6GHhClqCKtKq4SdEMIfS1hKOU6AJoTHeilftBl7IkhCaLytyqdWt3vMy0NBHoWev---ga0HH5Q6LHk&sig=Cg0ArKJSzKPTlLZd2p7XEAE&id=ampim&o=${elementX},${elementY}&d=${elementWidth},${elementHeight}&ss=${screenWidth},${screenHeight}&bs=${viewportWidth},${viewportHeight}&mcvt=${maxContinuousVisibleTime}&mtos=0,0,${maxContinuousVisibleTime},${maxContinuousVisibleTime},${maxContinuousVisibleTime}&tos=0,0,${totalVisibleTime},0,0&tfs=${firstSeenTime}&tls=${lastSeenTime}&g=${minVisiblePercentage}&h=${maxVisiblePercentage}&r=${unmeasurableReason}&pt=${pageLoadTime}&tt=${totalTime}&adk=4138296050&avms=ampa";
+
+    if (!!visibilitySpec['unmeasurableReasons'] !=
+        !!config['unmeasurableRequest']) {
+      user().error(TAG, 'unmeasurableReasons and unmeasurableRequest must ' +
+                   'only be used together');
+      delete visibilitySpec['unmeasurableReasons'];
+      delete config['unmeasurableRequest'];
+    }
+
     const visibilityManager = this.root.getVisibilityManager();
     // special polyfill for eventType: 'hidden'
     let createReadyReportPromiseFunc = null;
     if (eventType == 'hidden') {
       createReadyReportPromiseFunc = this.createReportReadyPromise_.bind(this);
     }
-
     // Root selectors are delegated to analytics roots.
     if (!selector || selector == ':root' || selector == ':host') {
       // When `selector` is specified, we always use "ini-load" signal as

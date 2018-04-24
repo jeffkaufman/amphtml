@@ -18,6 +18,16 @@ import {Observable} from '../../../src/observable';
 import {dev} from '../../../src/log';
 
 /**
+ * Reasons an element might be unmeasurable.
+ * @const
+ * @enum {string}
+ */
+export const UnmeasurableReason = {
+  ZERO_AREA: 'z',
+  ALL: '*',
+};
+
+/**
  * This class implements visibility calculations based on the
  * visibility ratio. It's used for documents, embeds and individual element.
  * @implements {../../../src/service.Disposable}
@@ -136,6 +146,9 @@ export class VisibilityModel {
 
     /** @private {?number} */
     this.scheduleRepeatId_ = null;
+
+    /** * @private {UnmeasurableReason} */
+    this.unmeasurableReason_ = null;
   }
 
   /**
@@ -169,6 +182,7 @@ export class VisibilityModel {
     this.maxVisiblePercentage_ = 0;
     this.lastVisibleUpdateTime_ = 0;
     this.waitToReset_ = false;
+    this.unmeasurableReason_ = null;
   }
 
   /**
@@ -286,6 +300,32 @@ export class VisibilityModel {
   }
 
   /**
+   * Mark the element as unmeasurable for the specified reason. If
+   * unmeasurableRequest is set, we'll skip the determination of visibility and
+   * send a ping to the specified url instead.
+   *
+   * @param {!UnmeasurableReason} unmeasurableReason
+   */
+  setUnmeasurableReason(unmeasurableReason) {
+    this.unmeasurableReason_ = unmeasurableReason;
+  }
+
+  /**
+   * @return {bool} whether this element has been marked as unmeasurable
+   */
+  isUnmeasurable() {
+    return !!this.unmeasurableReason_;
+  }
+
+  /**
+   * @return {?UnmeasurableReason} the reason this element has been marked as
+   * unmeasurable, or null if it's measurable.
+   */
+  getUnmeasurableReason() {
+    return this.unmeasurableReason_;
+  }
+
+  /**
    * @param {number} visibility
    * @private
    */
@@ -301,6 +341,24 @@ export class VisibilityModel {
     if (!this.eventResolver_) {
       return;
     }
+
+    if (this.isUnmeasurable()) {
+      const resolveEvent = (() => {
+        this.eventResolver_();
+        this.eventResolver_ = null;
+      });
+      if (this.reportReady_) {
+        resolveEvent();
+      } else if (this.createReportReadyPromise_) {
+        this.createReportReadyPromise_().then(() => {
+          this.reportReady_ = true;
+          resolveEvent();
+        });
+        this.createReportReadyPromise_ = null;
+      }
+      return;
+    }
+
     const conditionsMet = this.updateCounters_(visibility);
     if (conditionsMet) {
       if (this.scheduledUpdateTimeoutId_) {
@@ -316,7 +374,7 @@ export class VisibilityModel {
           this.continuousTime_ = 0;
         }
       } else if (this.createReportReadyPromise_) {
-        // Report when report ready promise resolve
+        // Report when report ready promise resolves.
         const reportReadyPromise = this.createReportReadyPromise_();
         this.createReportReadyPromise_ = null;
         reportReadyPromise.then(() => {
@@ -365,7 +423,7 @@ export class VisibilityModel {
 
   /**
    * @param {number} visibility
-   * @return {boolean} true
+   * @return {boolean} whether we meet the visibility spec
    * @private
    */
   updateCounters_(visibility) {
@@ -448,7 +506,6 @@ export class VisibilityModel {
         waitForTotalTime || Infinity);
   }
 }
-
 
 /**
  * Calculates the specified time based on the given `baseTime`.

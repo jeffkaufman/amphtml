@@ -20,7 +20,10 @@ import {
   nativeIntersectionObserverSupported,
 } from '../../../src/intersection-observer-polyfill';
 import {Services} from '../../../src/services';
-import {VisibilityModel} from './visibility-model';
+import {
+  VisibilityModel,
+  UnmeasurableReason,
+} from './visibility-model';
 import {dev, user} from '../../../src/log';
 import {getMode} from '../../../src/mode';
 import {isArray, isFiniteNumber} from '../../../src/types';
@@ -30,6 +33,9 @@ import {map} from '../../../src/utils/object';
 const TAG = 'VISIBILITY-MANAGER';
 
 const VISIBILITY_ID_PROP = '__AMP_VIS_ID';
+
+const UNMEASURABLE_ALL = '*';
+const UNMEASURABLE_ZERO_AREA = 'z';
 
 /** @type {number} */
 let visibilityIdCounter = 1;
@@ -172,6 +178,24 @@ export class VisibilityManager {
    * @abstract
    */
   getRootLayoutBox() {}
+
+  /**
+   * Returns the layout rect for the specified element.  If the element is null,
+   * returns the root layout rect.
+   * @param {!Element=} opt_element
+   * @return {!../../../src/layout-rect.LayoutRectDef}}
+   */
+  getLayoutBox(opt_element) {
+    if (opt_element) {
+      const resource =
+            this.resources_.getResourceForElementOptional(element);
+      return resource ?
+          resource.getLayoutBox() :
+          Services.viewportForDoc(this.ampdoc).getLayoutRect(element);
+    } else {
+      return this.getRootLayoutBox();
+    }
+  }
 
   /**
    * @return {number}
@@ -325,10 +349,25 @@ export class VisibilityManager {
       model.setReportReady(createReportPromiseFunc);
     }
 
+    const unmeasurableReasons = spec['unmeasurableReasons'] || [];
+    if (UnmeasurableReason.ALL in unmeasurableReasons ||
+        UnmeasurableReason.ZERO_AREA in unmeasurableReasons) {
+      const layoutBox = opt_element ? this.getLayoutBox(opt_element)
+                                    : this.getRootLayoutBox();
+      if (layoutBox.width = 0 || layoutBox.height == 0) {
+        model.setUnmeasurableReason(UnmeasurableReason.ZERO_AREA);
+      }
+    }
+
     // Process the event.
     model.onTriggerEvent(() => {
       const startTime = this.getStartTime();
       const state = model.getState(startTime);
+
+      if (model.isUnmeasurable()) {
+        state['customRequestKey'] = 'unmeasurableRequest';
+        state['unmeasurableReason'] = model.getUnmeasurableReason();
+      }
 
       // Additional doc-level state.
       state['backgrounded'] = this.isBackgrounded() ? 1 : 0;
@@ -336,23 +375,14 @@ export class VisibilityManager {
       state['totalTime'] = Date.now() - startTime;
 
       // Optionally, element-level state.
-      let layoutBox;
+      const layoutBox = this.getLayoutBox(opt_element);
       if (opt_element) {
-        const resource =
-            this.resources_.getResourceForElementOptional(opt_element);
-        layoutBox =
-            resource ?
-              resource.getLayoutBox() :
-              Services.viewportForDoc(this.ampdoc).getLayoutRect(opt_element);
         const intersectionRatio = this.getElementVisibility(opt_element);
         const intersectionRect = this.getElementIntersectionRect(opt_element);
         Object.assign(state, {
           'intersectionRatio': intersectionRatio,
           'intersectionRect': JSON.stringify(intersectionRect),
         });
-
-      } else {
-        layoutBox = this.getRootLayoutBox();
       }
       model.maybeDispose();
 

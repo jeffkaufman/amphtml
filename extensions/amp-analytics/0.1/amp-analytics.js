@@ -643,8 +643,10 @@ export class AmpAnalytics extends AMP.BaseElement {
    * @private
    */
   handleEvent_(trigger, event) {
-    const requests = isArray(trigger['request'])
-      ? trigger['request'] : [trigger['request']];
+    requestKey = event.vars['customRequestKey'] || 'request'
+
+    const requests = isArray(trigger[requestKey])
+      ? trigger[requestKey] : [trigger[requestKey]];
 
     for (let r = 0; r < requests.length; r++) {
       const requestName = requests[r];
